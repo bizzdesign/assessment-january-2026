@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment API Tester</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+    h2 { margin-top: 30px; }
+    label { display: block; margin-top: 10px; font-weight: bold; }
+    input, textarea, select { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-family: monospace; }
+    textarea { height: 150px; }
+    button { margin-top: 10px; padding: 10px 20px; background: #333; color: white; border: none; cursor: pointer; margin-right: 10px; }
+    button:hover { background: #555; }
+    .result { margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 13px; overflow-x: auto; max-height: 400px; overflow-y: auto; }
+    .error { background: #fee; color: #c00; }
+    .success { background: #efe; }
+    hr { margin: 40px 0; }
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>Assessment API Tester</h1>
+
+  <h2>POST /generate/config</h2>
+  <p>Upload a source file and generate a mapping configuration using the LLM.</p>
+  
+  <div class="row">
+    <div>
+      <label>File Type:</label>
+      <select id="generateFileType">
+        <option value="csv">CSV</option>
+        <option value="json">JSON</option>
+      </select>
+    </div>
+    <div>
+      <label>Target Repository:</label>
+      <select id="generateTargetRepo">
+        <option value="users">users</option>
+        <option value="products">products</option>
+        <option value="orders">orders</option>
+      </select>
+    </div>
+  </div>
+
+  <label>Load Sample File:</label>
+  <select id="sampleFileSelect" onchange="loadSampleFile()">
+    <option value="">-- Select a sample file --</option>
+    <option value="users.csv">users.csv (CSV → users)</option>
+    <option value="products.json">products.json (JSON → products)</option>
+    <option value="orders.csv">orders.csv (CSV → orders)</option>
+    <option value="inventory.json">inventory.json (JSON → products)</option>
+  </select>
+
+  <label>Source File Content:</label>
+  <textarea id="generateSourceFile" placeholder="Paste your CSV or JSON file content here..."></textarea>
+  
+  <button onclick="generateConfig()">Generate Config</button>
+  <button onclick="copyConfigToExecute()">Copy Config to Execute ↓</button>
+  <div id="generateResult" class="result">Response will appear here...</div>
+
+  <hr>
+
+  <h2>POST /execute/config</h2>
+  <p>Execute a mapping configuration against a source file to produce standardized output.</p>
+
+  <label>Mapping Config (JSON):</label>
+  <textarea id="executeConfig" placeholder="Paste the config from /generate/config here...">{
+  "name": "user-import",
+  "sourceType": "csv",
+  "targetRepository": "users",
+  "idField": "user_id",
+  "fieldMappings": [
+    { "sourceField": "email_address", "targetField": "email" },
+    { "sourceField": "full_name", "targetField": "name", "transform": "trim" },
+    { "sourceField": "phone_number", "targetField": "phone" },
+    { "sourceField": "role", "targetField": "role" }
+  ],
+  "options": {
+    "skipEmptyFields": true,
+    "validateRequired": true
+  }
+}</textarea>
+
+  <label>Source File Content:</label>
+  <textarea id="executeSourceFile" placeholder="Paste your CSV or JSON file content here..."></textarea>
+
+  <button onclick="executeConfig()">Execute Config</button>
+  <div id="executeResult" class="result">Response will appear here...</div>
+
+  <script>
+    const API_BASE = 'http://localhost:3000';
+
+    const SAMPLE_FILES = {
+      'users.csv': `user_id,email_address,full_name,phone_number,role
+1,alice@example.com,Alice Smith,555-1234,admin
+2,bob@example.com,Bob Jones,,user
+3,charlie@example.com,Charlie Brown,555-5678,user
+4,diana@example.com,Diana Prince,555-9999,moderator`,
+      'products.json': `[
+  { "product_code": "SKU001", "product_name": "Widget", "unit_price": "29.99", "desc": "A useful widget", "qty": "100", "cat": "tools" },
+  { "product_code": "SKU002", "product_name": "Gadget", "unit_price": "49.99", "desc": "A cool gadget", "qty": "50", "cat": "electronics" },
+  { "product_code": "SKU003", "product_name": "Thingamajig", "unit_price": "19.99", "desc": "", "qty": "200", "cat": "misc" },
+  { "product_code": "SKU004", "product_name": "Doohickey", "unit_price": "9.99", "desc": "Essential doohickey", "qty": "500", "cat": "tools" }
+]`,
+      'orders.csv': `order_ref,cust_id,amount,state,created
+ORD-001,1,79.98,shipped,2026-01-15
+ORD-002,2,29.99,pending,2026-01-20
+ORD-003,1,149.97,delivered,2026-01-10
+ORD-004,3,59.99,processing,2026-01-25
+ORD-005,4,199.99,shipped,2026-01-22`,
+      'inventory.json': `{
+  "warehouse": "WEST-01",
+  "lastUpdated": "2026-01-28",
+  "items": [
+    { "sku": "SKU001", "name": "Widget", "onHand": 85, "reorderPoint": 20, "unitCost": 15.00 },
+    { "sku": "SKU002", "name": "Gadget", "onHand": 42, "reorderPoint": 10, "unitCost": 25.00 },
+    { "sku": "SKU003", "name": "Thingamajig", "onHand": 180, "reorderPoint": 50, "unitCost": 8.00 },
+    { "sku": "SKU004", "name": "Doohickey", "onHand": 450, "reorderPoint": 100, "unitCost": 4.00 }
+  ]
+}`
+    };
+
+    const FILE_MAPPINGS = {
+      'users.csv': { fileType: 'csv', targetRepo: 'users' },
+      'products.json': { fileType: 'json', targetRepo: 'products' },
+      'orders.csv': { fileType: 'csv', targetRepo: 'orders' },
+      'inventory.json': { fileType: 'json', targetRepo: 'products' }
+    };
+
+    function loadSampleFile() {
+      const select = document.getElementById('sampleFileSelect');
+      const fileName = select.value;
+      if (fileName && SAMPLE_FILES[fileName]) {
+        document.getElementById('generateSourceFile').value = SAMPLE_FILES[fileName];
+        document.getElementById('executeSourceFile').value = SAMPLE_FILES[fileName];
+        
+        const mapping = FILE_MAPPINGS[fileName];
+        document.getElementById('generateFileType').value = mapping.fileType;
+        document.getElementById('generateTargetRepo').value = mapping.targetRepo;
+      }
+    }
+
+    function copyConfigToExecute() {
+      const result = document.getElementById('generateResult').textContent;
+      try {
+        const data = JSON.parse(result);
+        if (data.config && !data.config._placeholder) {
+          document.getElementById('executeConfig').value = JSON.stringify(data.config, null, 2);
+        } else {
+          alert('No valid config to copy. Generate a config first.');
+        }
+      } catch {
+        alert('Could not parse the generate result.');
+      }
+    }
+
+    async function generateConfig() {
+      const sourceFile = document.getElementById('generateSourceFile').value;
+      const fileType = document.getElementById('generateFileType').value;
+      const targetRepository = document.getElementById('generateTargetRepo').value;
+      const resultDiv = document.getElementById('generateResult');
+      
+      resultDiv.textContent = 'Loading...';
+      resultDiv.className = 'result';
+
+      try {
+        const response = await fetch(`${API_BASE}/generate/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceFile, fileType, targetRepository })
+        });
+        const data = await response.json();
+        resultDiv.textContent = JSON.stringify(data, null, 2);
+        resultDiv.className = response.ok ? 'result success' : 'result error';
+      } catch (err) {
+        resultDiv.textContent = 'Error: ' + err.message;
+        resultDiv.className = 'result error';
+      }
+    }
+
+    async function executeConfig() {
+      const configText = document.getElementById('executeConfig').value;
+      const sourceFile = document.getElementById('executeSourceFile').value;
+      const resultDiv = document.getElementById('executeResult');
+
+      resultDiv.textContent = 'Loading...';
+      resultDiv.className = 'result';
+
+      try {
+        const config = JSON.parse(configText);
+        const response = await fetch(`${API_BASE}/execute/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ config, sourceFile })
+        });
+        const data = await response.json();
+        resultDiv.textContent = JSON.stringify(data, null, 2);
+        resultDiv.className = data.valid ? 'result success' : 'result error';
+      } catch (err) {
+        resultDiv.textContent = 'Error: ' + err.message;
+        resultDiv.className = 'result error';
+      }
+    }
+  </script>
+</body>
+</html>

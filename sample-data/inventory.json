@@ -1,0 +1,10 @@
+{
+  "warehouse": "WEST-01",
+  "lastUpdated": "2026-01-28",
+  "items": [
+    { "sku": "SKU001", "name": "Widget", "onHand": 85, "reorderPoint": 20, "unitCost": 15.00 },
+    { "sku": "SKU002", "name": "Gadget", "onHand": 42, "reorderPoint": 10, "unitCost": 25.00 },
+    { "sku": "SKU003", "name": "Thingamajig", "onHand": 180, "reorderPoint": 50, "unitCost": 8.00 },
+    { "sku": "SKU004", "name": "Doohickey", "onHand": 450, "reorderPoint": 100, "unitCost": 4.00 }
+  ]
+}

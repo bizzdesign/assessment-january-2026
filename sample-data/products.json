@@ -1,0 +1,6 @@
+[
+  { "product_code": "SKU001", "product_name": "Widget", "unit_price": "29.99", "desc": "A useful widget", "qty": "100", "cat": "tools" },
+  { "product_code": "SKU002", "product_name": "Gadget", "unit_price": "49.99", "desc": "A cool gadget", "qty": "50", "cat": "electronics" },
+  { "product_code": "SKU003", "product_name": "Thingamajig", "unit_price": "19.99", "desc": "", "qty": "200", "cat": "misc" },
+  { "product_code": "SKU004", "product_name": "Doohickey", "unit_price": "9.99", "desc": "Essential doohickey", "qty": "500", "cat": "tools" }
+]

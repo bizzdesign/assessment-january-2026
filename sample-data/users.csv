@@ -1,0 +1,5 @@
+user_id,email_address,full_name,phone_number,role
+1,alice@example.com,Alice Smith,555-1234,admin
+2,bob@example.com,Bob Jones,,user
+3,charlie@example.com,Charlie Brown,555-5678,user
+4,diana@example.com,Diana Prince,555-9999,moderator

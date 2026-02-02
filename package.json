@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node api/server.js"
   },
   "dependencies": {
-    "ai": "^3.0.0",
-    "@ai-sdk/openai": "^0.0.40",
+    "ai": "^6.0.0",
+    "@ai-sdk/openai": "^1.0.0",
     "express": "^4.18.2",
     "zod": "^3.22.4"
   }

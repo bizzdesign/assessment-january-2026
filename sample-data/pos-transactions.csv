@@ -1,0 +1,6 @@
+txn_ref,register_id,buyer_email,buyer_phone,sale_total,tax_amount,payment_type,txn_status,txn_time
+POS-20260125-001,REG-03,walk.in@store.com,555-0101,42.99,3.44,card,complete,2026-01-25T10:15:33Z
+POS-20260125-002,REG-01,member@loyalty.com,555-0202,128.50,10.28,card,complete,2026-01-25T11:30:00Z
+POS-20260125-003,REG-02,walk.in@store.com,555-0303,15.99,1.28,cash,complete,2026-01-25T12:45:22Z
+POS-20260125-004,REG-03,vip@customer.org,555-0404,350.00,28.00,card,refunded,2026-01-25T14:00:00Z
+POS-20260125-005,REG-01,member@loyalty.com,555-0505,67.25,5.38,card,complete,2026-01-25T15:20:10Z

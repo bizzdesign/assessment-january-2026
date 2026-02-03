@@ -2,6 +2,31 @@ import express from 'express';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { generateObject } from 'ai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+
+// ============================================================================
+// OPENROUTER CONFIGURATION
+// ============================================================================
+// Set your API key: export OPENROUTER_API_KEY=your-key-here
+// Get a key at: https://openrouter.ai/keys
+
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+
+// Available models (pick one to use with openrouter('model-id')):
+// See full list at: https://openrouter.ai/models
+//
+// RECOMMENDED MODELS:
+//   openai/gpt-4o              - Best overall, fast, great at structured output
+//   openai/gpt-4o-mini         - Cheaper, still very capable
+//   anthropic/claude-3.5-sonnet - Excellent reasoning and instruction following
+//   anthropic/claude-3-haiku   - Fast and cheap, good for simple tasks
+//   google/gemini-2.0-flash    - Very fast, good value
+//   google/gemini-1.5-pro      - Strong reasoning, large context
+//   meta-llama/llama-3.1-70b-instruct - Open source, good performance
+//   deepseek/deepseek-chat     - Very cheap, surprisingly capable
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -178,25 +203,23 @@ app.post('/generate/config', async (req, res) => {
       return res.status(400).json({ error: `Failed to parse source file: ${parseError.message}` });
     }
 
-    // TODO: Implement the LLM call here using Vercel AI SDK
+    // TODO: Implement the LLM call here using Vercel AI SDK + OpenRouter
     // 
-    // Documentation: https://sdk.vercel.ai/docs
-    // Available models: https://sdk.vercel.ai/docs/ai-sdk-core/overview#models
+    // Documentation: 
+    //   - Vercel AI SDK: https://sdk.vercel.ai/docs
+    //   - generateObject: https://sdk.vercel.ai/docs/ai-sdk-core/generating-structured-data
+    //   - OpenRouter: https://openrouter.ai/docs
     // 
-    // You should use the `generateObject` function from the 'ai' package.
-    // This function allows you to generate structured JSON output from an LLM.
-    // 
-    // See: https://sdk.vercel.ai/docs/ai-sdk-core/generating-structured-data
+    // The `generateObject` function is already imported. Use it to generate
+    // a MappingConfigSchema-compliant config from the LLM.
     // 
     // Example usage:
-    //   import { generateObject } from 'ai';
-    //   import { openai } from '@ai-sdk/openai';
-    //
     //   const result = await generateObject({
-    //     model: openai('gpt-4o'),
+    //     model: openrouter('openai/gpt-4o'),  // or any model from the list above
     //     schema: MappingConfigSchema,
     //     prompt: '...',
     //   });
+    //   return res.json({ config: result.object });
     // 
     // Available context for the LLM:
     //   - sourceFields: array of field names found in the source file

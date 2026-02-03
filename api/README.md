@@ -8,9 +8,9 @@ Frontend & LLM Prompting Assessment
 npm install
 ```
 
-Set your OpenAI API key:
+Set your OpenRouter API key (get one at https://openrouter.ai/keys):
 ```bash
-export OPENAI_API_KEY=your-key-here
+export OPENROUTER_API_KEY=your-key-here
 ```
 
 Run the server:

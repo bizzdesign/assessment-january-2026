@@ -1,9 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { Output, generateText } from 'ai';
 
 // ============================================================================
 // OPENROUTER CONFIGURATION
@@ -53,24 +54,45 @@ app.get('/', (req, res) => {
 // ============================================================================
 // STANDARDIZED OUTPUT FORMAT
 // ============================================================================
-// All imported data should be transformed into this standardized format.
+// All imported data is transformed into this standardized format.
 // Each record becomes a StandardizedRecord with consistent structure.
 
-const STANDARDIZED_SCHEMA = {
-  // Every record must have these fields after transformation
-  required: ['id', 'type', 'data'],
-  // The 'data' object contains the actual mapped fields
-  // The 'type' indicates the target repository (users, products, orders)
-  // The 'id' is a unique identifier from the source
-};
+const StandardizedRecordSchema = z.object({
+  id: z.string().describe('Unique identifier from source (via idField)'),
+  type: z.enum(['users', 'products', 'orders']).describe('Target repository type'),
+  data: z.record(z.string(), z.any()).describe('Mapped field values'),
+  _meta: z.object({
+    sourceIndex: z.number().describe('Position in source file (0-indexed)'),
+    importedAt: z.string().describe('ISO timestamp of import'),
+    success: z.boolean().describe('Whether import succeeded'),
+    errors: z.array(z.string()).optional().describe('Any transformation errors'),
+  }),
+});
 
 // Example standardized output:
 // {
 //   id: "1",
 //   type: "users",
 //   data: { email: "alice@example.com", name: "Alice Smith", phone: "555-1234" },
-//   _meta: { sourceIndex: 0, importedAt: "2026-01-28T12:00:00Z" }
+//   _meta: { sourceIndex: 0, importedAt: "2026-01-28T12:00:00Z", success: true }
 // }
+
+// Full response schema for /execute/config
+const ExecuteConfigResponseSchema = z.object({
+  valid: z.boolean(),
+  summary: z.object({
+    totalRecords: z.number(),
+    successfulImports: z.number(),
+    failedImports: z.number(),
+    targetRepository: z.string(),
+    importedAt: z.string(),
+  }).optional(),
+  records: z.array(StandardizedRecordSchema).optional(),
+  errors: z.array(z.object({
+    path: z.string(),
+    message: z.string(),
+  })).optional(),
+});
 
 // ============================================================================
 // SCHEMA DEFINITIONS
@@ -192,12 +214,16 @@ app.post('/generate/config', async (req, res) => {
       });
     }
 
-    // Parse the source file to extract field names for the LLM
+    // Parse the source file to extract field names and sample data for the LLM
     let sourceFields = [];
+    let parsedRecords = [];
+    let sampleRecords = [];
     try {
-      const records = parseSourceFile(sourceFile, fileType);
-      if (records.length > 0) {
-        sourceFields = Object.keys(records[0]);
+      parsedRecords = parseSourceFile(sourceFile, fileType);
+      if (parsedRecords.length > 0) {
+        sourceFields = Object.keys(parsedRecords[0]);
+        // Get first 3 records as sample data
+        sampleRecords = parsedRecords.slice(0, 3);
       }
     } catch (parseError) {
       return res.status(400).json({ error: `Failed to parse source file: ${parseError.message}` });
@@ -235,15 +261,38 @@ app.post('/generate/config', async (req, res) => {
     // 4. Handle the result and return the generated config
     //
     // For now, returning a placeholder:
-    const config = {
-      _placeholder: true,
-      message: 'LLM integration not yet implemented',
-      detectedSourceFields: sourceFields,
-      targetRepository: targetRepository,
-      targetSchema: REPOSITORY_SCHEMA[targetRepository],
-    };
 
-    return res.json({ config });
+    const llmRes = await generateText({
+      model: openrouter('anthropic/claude-4.5-sonnet'),
+      prompt: `
+      You are a helpful assistant that generates a mapping configuration for a given source file and target repository.
+      The source file is a CSV or JSON file and the target repository is a users, products, or orders repository.
+      The mapping configuration should be a JSON object that matches the MappingConfigSchema schema.
+      The mapping configuration should be generated based on the source file and the target repository.
+      The mapping configuration should be generated based on the source file and the target repository.
+
+      Here is the shape of the input to be mapped:
+      ${JSON.stringify(sourceFields)}
+
+      And a sample of the records therein:
+      ${JSON.stringify(sampleRecords)}
+
+
+      The target repository "${targetRepository}" has the following schema:
+      Required fields: ${JSON.stringify(REPOSITORY_SCHEMA[targetRepository].required)}
+      Optional fields: ${JSON.stringify(REPOSITORY_SCHEMA[targetRepository].optional)}
+
+      Be sure to always map a field from the input to an id. Don't invent an id field.
+      `,
+      output: Output.object({
+        schema: MappingConfigSchema,
+      }),
+    })
+    const config = llmRes.output;
+
+    console.log('output', config);
+
+    return res.json({config});
   } catch (error) {
     console.error('Error generating config:', error);
     return res.status(500).json({ error: 'Failed to generate config' });

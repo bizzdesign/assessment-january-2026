@@ -1,9 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { Output, generateText } from 'ai';
 
 // ============================================================================
 // OPENROUTER CONFIGURATION
@@ -51,26 +52,57 @@ app.get('/', (req, res) => {
 });
 
 // ============================================================================
-// STANDARDIZED OUTPUT FORMAT
+// STANDARDIZED ORDER SCHEMA
 // ============================================================================
-// All imported data should be transformed into this standardized format.
-// Each record becomes a StandardizedRecord with consistent structure.
+// All imported order data must be transformed into this standardized format.
+// The LLM's job is to map from various source formats to this target schema.
 
-const STANDARDIZED_SCHEMA = {
-  // Every record must have these fields after transformation
-  required: ['id', 'type', 'data'],
-  // The 'data' object contains the actual mapped fields
-  // The 'type' indicates the target repository (users, products, orders)
-  // The 'id' is a unique identifier from the source
+const StandardizedOrderSchema = z.object({
+  // Required field - every order must have an ID
+  orderId: z.string().describe('Unique order identifier'),
+  
+  // All other fields are optional - map as many as possible from source
+  customerId: z.string().optional().describe('Customer identifier'),
+  customerEmail: z.string().optional().describe('Customer email address'),
+  customerName: z.string().optional().describe('Customer full name'),
+  totalAmount: z.number().optional().describe('Total order amount in cents (integer)'),
+  currency: z.string().optional().describe('3-letter currency code (e.g., USD, EUR, GBP)'),
+  status: z.string().optional().describe('Order status (e.g., pending, shipped, delivered)'),
+  itemCount: z.number().optional().describe('Number of items in order'),
+  shippingAddress: z.string().optional().describe('Shipping address as single string'),
+  shippingCity: z.string().optional().describe('Shipping city'),
+  shippingCountry: z.string().optional().describe('Shipping country code'),
+  createdAt: z.string().optional().describe('Order creation timestamp (ISO 8601)'),
+  updatedAt: z.string().optional().describe('Last update timestamp (ISO 8601)'),
+  notes: z.string().optional().describe('Order notes or special instructions'),
+});
+
+// The target schema that the LLM needs to map to
+const TARGET_ORDER_SCHEMA = {
+  required: ['orderId'],
+  optional: ['customerId', 'customerEmail', 'customerName', 'totalAmount', 'currency', 'status', 'itemCount', 'shippingAddress', 'shippingCity', 'shippingCountry', 'createdAt', 'updatedAt', 'notes'],
 };
 
-// Example standardized output:
-// {
-//   id: "1",
-//   type: "users",
-//   data: { email: "alice@example.com", name: "Alice Smith", phone: "555-1234" },
-//   _meta: { sourceIndex: 0, importedAt: "2026-01-28T12:00:00Z" }
-// }
+// Full response schema for /execute/config
+const ExecuteConfigResponseSchema = z.object({
+  valid: z.boolean(),
+  summary: z.object({
+    totalRecords: z.number(),
+    successfulImports: z.number(),
+    failedImports: z.number(),
+    importedAt: z.string(),
+  }).optional(),
+  orders: z.array(z.object({
+    _sourceIndex: z.number(),
+    _success: z.boolean(),
+    _errors: z.array(z.string()).optional(),
+    order: StandardizedOrderSchema.partial(), // The actual order data
+  })).optional(),
+  errors: z.array(z.object({
+    path: z.string(),
+    message: z.string(),
+  })).optional(),
+});
 
 // ============================================================================
 // SCHEMA DEFINITIONS
@@ -80,26 +112,18 @@ const STANDARDIZED_SCHEMA = {
 const MappingConfigSchema = z.object({
   name: z.string().describe('Name of this import mapping'),
   sourceType: z.enum(['csv', 'json']).describe('Type of the source data'),
-  targetRepository: z.enum(['users', 'products', 'orders']).describe('Name of the target repository'),
-  idField: z.string().describe('The source field to use as the unique identifier'),
+  idField: z.string().describe('The source field to use as the order ID'),
   fieldMappings: z.array(z.object({
     sourceField: z.string().describe('Field name in the source data'),
-    targetField: z.string().describe('Field name in the target repository'),
+    targetField: z.string().describe('Field name in the standardized order schema'),
     transform: z.enum(['none', 'uppercase', 'lowercase', 'trim', 'number']).optional()
       .describe('Optional transformation to apply'),
-  })).describe('Array of field mappings from source to target'),
+  })).describe('Array of field mappings from source to target order fields'),
   options: z.object({
     skipEmptyFields: z.boolean().describe('Whether to skip empty source fields'),
     validateRequired: z.boolean().describe('Whether to validate required target fields'),
   }),
 });
-
-// Target repository schemas - the LLM needs to know these to create valid mappings
-const REPOSITORY_SCHEMA = {
-  users: { required: ['id', 'email', 'name'], optional: ['phone', 'address', 'role'] },
-  products: { required: ['sku', 'name', 'price'], optional: ['description', 'category', 'stock'] },
-  orders: { required: ['orderId', 'customerId', 'total'], optional: ['status', 'createdAt', 'items'] },
-};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -164,19 +188,20 @@ function parseSourceFile(sourceFile, sourceType) {
 /**
  * POST /generate/config
  * 
- * Uses an LLM to generate a mapping configuration based on the source file.
+ * Uses an LLM to generate a mapping configuration to transform source order data
+ * into the standardized order format.
  * 
  * Request body:
  *   - sourceFile: string - The stringified content of the source file (CSV or JSON)
  *   - fileType: 'csv' | 'json' - The type of the source file
- *   - targetRepository: 'users' | 'products' | 'orders' - The target repository to map to
  * 
  * Response:
  *   - config: object - The generated mapping configuration
+ *   - sourceInfo: object - Information about the parsed source file
  */
 app.post('/generate/config', async (req, res) => {
   try {
-    const { sourceFile, fileType, targetRepository } = req.body;
+    const { sourceFile, fileType } = req.body;
 
     if (!sourceFile || typeof sourceFile !== 'string') {
       return res.status(400).json({ error: 'sourceFile is required and must be a string' });
@@ -186,18 +211,16 @@ app.post('/generate/config', async (req, res) => {
       return res.status(400).json({ error: 'fileType is required and must be "csv" or "json"' });
     }
 
-    if (!targetRepository || !REPOSITORY_SCHEMA[targetRepository]) {
-      return res.status(400).json({ 
-        error: `targetRepository is required and must be one of: ${Object.keys(REPOSITORY_SCHEMA).join(', ')}` 
-      });
-    }
-
-    // Parse the source file to extract field names for the LLM
+    // Parse the source file to extract field names and sample data for the LLM
     let sourceFields = [];
+    let parsedRecords = [];
+    let sampleRecords = [];
     try {
-      const records = parseSourceFile(sourceFile, fileType);
-      if (records.length > 0) {
-        sourceFields = Object.keys(records[0]);
+      parsedRecords = parseSourceFile(sourceFile, fileType);
+      if (parsedRecords.length > 0) {
+        sourceFields = Object.keys(parsedRecords[0]);
+        // Get first 3 records as sample data
+        sampleRecords = parsedRecords.slice(0, 3);
       }
     } catch (parseError) {
       return res.status(400).json({ error: `Failed to parse source file: ${parseError.message}` });
@@ -223,10 +246,9 @@ app.post('/generate/config', async (req, res) => {
     // 
     // Available context for the LLM:
     //   - sourceFields: array of field names found in the source file
-    //   - targetRepository: the target repository name
-    //   - REPOSITORY_SCHEMA[targetRepository]: the target schema with required/optional fields
+    //   - sampleRecords: first 3 records from the source file
+    //   - TARGET_ORDER_SCHEMA: the target schema with required/optional fields
     //   - fileType: 'csv' or 'json'
-    //   - sourceFile: the raw file content (first few lines might be useful as examples)
     //
     // The candidate should:
     // 1. Craft an appropriate system prompt explaining the task
@@ -235,15 +257,64 @@ app.post('/generate/config', async (req, res) => {
     // 4. Handle the result and return the generated config
     //
     // For now, returning a placeholder:
-    const config = {
-      _placeholder: true,
-      message: 'LLM integration not yet implemented',
-      detectedSourceFields: sourceFields,
-      targetRepository: targetRepository,
-      targetSchema: REPOSITORY_SCHEMA[targetRepository],
-    };
 
-    return res.json({ config });
+    const llmRes = await generateText({
+      model: openrouter('anthropic/claude-4.5-sonnet'),
+      prompt: `
+      You are a helpful assistant that generates a mapping configuration to transform order data 
+      from a source format into our standardized order format.
+      
+      The source file is a ${fileType.toUpperCase()} file containing order data.
+      
+      SOURCE DATA:
+      Fields available: ${JSON.stringify(sourceFields)}
+      
+      Sample records:
+      ${JSON.stringify(sampleRecords, null, 2)}
+
+      TARGET ORDER SCHEMA:
+      Required fields: ${JSON.stringify(TARGET_ORDER_SCHEMA.required)}
+      Optional fields: ${JSON.stringify(TARGET_ORDER_SCHEMA.optional)}
+      
+      Field descriptions:
+      - orderId: Unique order identifier (string)
+      - customerId: Customer identifier (string)
+      - customerEmail: Customer email address (string)
+      - totalAmount: Total order amount in cents as integer (e.g., 2999 for $29.99)
+      - currency: 3-letter currency code (e.g., "USD", "EUR", "GBP")
+      - status: One of: pending, confirmed, processing, shipped, delivered, cancelled, refunded
+      - customerName: Customer full name (optional)
+      - itemCount: Number of items in order (optional)
+      - shippingAddress: Full shipping address (optional)
+      - shippingCity: Shipping city (optional)
+      - shippingCountry: Shipping country code (optional)
+      - createdAt: ISO 8601 timestamp (optional)
+      - updatedAt: ISO 8601 timestamp (optional)
+      - notes: Order notes (optional)
+
+      INSTRUCTIONS:
+      1. Map source fields to target fields based on semantic meaning
+      2. Use 'number' transform for totalAmount to convert to integer cents
+      3. Use 'lowercase' transform for status if needed to match enum values
+      4. The idField should be set to the source field that contains the order ID
+      5. Map as many fields as possible, prioritizing required fields
+      `,
+      output: Output.object({
+        schema: MappingConfigSchema,
+      }),
+    })
+    const config = llmRes.output;
+
+    console.log('output', config);
+
+    return res.json({
+      config,
+      sourceInfo: {
+        fields: sourceFields,
+        recordCount: parsedRecords.length,
+        sampleRecords: sampleRecords,
+      },
+    });
   } catch (error) {
     console.error('Error generating config:', error);
     return res.status(500).json({ error: 'Failed to generate config' });
@@ -254,7 +325,7 @@ app.post('/generate/config', async (req, res) => {
  * POST /execute/config
  * 
  * Validates a mapping configuration and executes the import, transforming
- * source data into the standardized output format.
+ * source order data into the standardized order format.
  * 
  * Request body:
  *   - config: object - The mapping configuration (from /generate/config)
@@ -262,7 +333,7 @@ app.post('/generate/config', async (req, res) => {
  * 
  * Response:
  *   - valid: boolean - Whether the config was valid
- *   - records: array - Standardized records (if valid)
+ *   - orders: array - Standardized order records (if valid)
  *   - errors: array - Validation/import errors
  */
 app.post('/execute/config', async (req, res) => {
@@ -292,13 +363,10 @@ app.post('/execute/config', async (req, res) => {
 
     const validConfig = parseResult.data;
 
-    // Check target repository schema
-    const repoSchema = REPOSITORY_SCHEMA[validConfig.targetRepository];
-
-    // Check if required fields are mapped (excluding 'id' which comes from idField)
-    const mappedTargetFields = validConfig.fieldMappings.map(m => m.targetField);
-    const requiredWithoutId = repoSchema.required.filter(f => f !== 'id');
-    const missingRequired = requiredWithoutId.filter(f => !mappedTargetFields.includes(f));
+    // Check if required order fields are mapped (excluding orderId which comes from idField)
+    const mappedTargetFields = new Set(validConfig.fieldMappings.map(m => m.targetField));
+    const requiredFields = TARGET_ORDER_SCHEMA.required.filter(f => f !== 'orderId');
+    const missingRequired = requiredFields.filter(f => !mappedTargetFields.has(f));
     
     if (validConfig.options.validateRequired && missingRequired.length > 0) {
       return res.json({
@@ -325,27 +393,28 @@ app.post('/execute/config', async (req, res) => {
       return res.json({
         valid: true,
         message: 'Source file parsed but contains no records.',
-        records: [],
+        orders: [],
       });
     }
 
-    // Transform source records into standardized format
+    // Transform source records into standardized order format
     const importedAt = new Date().toISOString();
-    const records = [];
-    const errors = [];
+    const orders = [];
 
     for (let index = 0; index < sourceRecords.length; index++) {
       const sourceRecord = sourceRecords[index];
       const recordErrors = [];
 
-      // Extract the ID from the source record
-      const recordId = sourceRecord[validConfig.idField];
-      if (recordId === undefined || recordId === null || recordId === '') {
-        recordErrors.push(`Missing ID field "${validConfig.idField}"`);
+      // Extract the order ID from the source record
+      const orderId = sourceRecord[validConfig.idField];
+      if (orderId === undefined || orderId === null || orderId === '') {
+        recordErrors.push(`Missing order ID field "${validConfig.idField}"`);
       }
 
-      // Build the data object by applying field mappings
-      const data = {};
+      // Build the order object by applying field mappings
+      const order = {
+        orderId: String(orderId || `unknown-${index}`),
+      };
 
       for (const mapping of validConfig.fieldMappings) {
         let value = sourceRecord[mapping.sourceField];
@@ -367,42 +436,31 @@ app.post('/execute/config', async (req, res) => {
             case 'trim':
               value = String(value).trim();
               break;
-            case 'number':
+            case 'number': {
               const numValue = Number(value);
-              if (isNaN(numValue)) {
+              if (Number.isNaN(numValue)) {
                 recordErrors.push(`Field "${mapping.sourceField}" could not be converted to number`);
                 value = 0;
               } else {
                 value = numValue;
               }
               break;
+            }
           }
         }
 
-        data[mapping.targetField] = value;
+        order[mapping.targetField] = value;
       }
 
-      // Create standardized record
-      const standardizedRecord = {
-        id: String(recordId || `unknown-${index}`),
-        type: validConfig.targetRepository,
-        data: data,
-        _meta: {
-          sourceIndex: index,
-          importedAt: importedAt,
-          success: recordErrors.length === 0,
-          errors: recordErrors.length > 0 ? recordErrors : undefined,
-        },
-      };
-
-      records.push(standardizedRecord);
-
-      if (recordErrors.length > 0) {
-        errors.push({ index, errors: recordErrors });
-      }
+      orders.push({
+        _sourceIndex: index,
+        _success: recordErrors.length === 0,
+        _errors: recordErrors.length > 0 ? recordErrors : undefined,
+        order: order,
+      });
     }
 
-    const successCount = records.filter(r => r._meta.success).length;
+    const successCount = orders.filter(o => o._success).length;
 
     return res.json({
       valid: true,
@@ -410,10 +468,9 @@ app.post('/execute/config', async (req, res) => {
         totalRecords: sourceRecords.length,
         successfulImports: successCount,
         failedImports: sourceRecords.length - successCount,
-        targetRepository: validConfig.targetRepository,
         importedAt: importedAt,
       },
-      records: records,
+      orders: orders,
     });
   } catch (error) {
     console.error('Error executing config:', error);

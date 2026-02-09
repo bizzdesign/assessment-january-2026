@@ -1,0 +1,6 @@
+ORDER_NUM,CUST_CODE,EMAIL_ADDR,AMOUNT_CENTS,STATUS_CD,SHIP_CITY,SHIP_COUNTRY,ORDER_DT,NOTES
+2026-0001,C100,customer1@legacy.com,15000,SHP,London,GB,20260115,Express shipping requested
+2026-0002,C101,customer2@legacy.com,8999,PND,Manchester,GB,20260116,
+2026-0003,C102,customer3@legacy.com,45000,DLV,Birmingham,GB,20260112,Gift wrap included
+2026-0004,C100,customer1@legacy.com,22500,CNF,London,GB,20260118,Second order this month
+2026-0005,C103,customer4@legacy.com,6750,CNC,Leeds,GB,20260114,Cancelled by customer

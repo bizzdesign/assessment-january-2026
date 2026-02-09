@@ -1,0 +1,66 @@
+{
+  "orders": [
+    {
+      "id": 5001,
+      "status": "processing",
+      "date_created": "2026-01-22T09:00:00",
+      "total": "175.00",
+      "currency": "EUR",
+      "billing": {
+        "email": "hans.mueller@example.de",
+        "first_name": "Hans",
+        "last_name": "Mueller"
+      },
+      "shipping": {
+        "city": "Berlin",
+        "country": "DE",
+        "address_1": "Hauptstrasse 10"
+      },
+      "line_items": [
+        { "name": "Product A", "quantity": 2 },
+        { "name": "Product B", "quantity": 1 }
+      ]
+    },
+    {
+      "id": 5002,
+      "status": "completed",
+      "date_created": "2026-01-21T14:30:00",
+      "total": "59.99",
+      "currency": "EUR",
+      "billing": {
+        "email": "marie.dupont@example.fr",
+        "first_name": "Marie",
+        "last_name": "Dupont"
+      },
+      "shipping": {
+        "city": "Paris",
+        "country": "FR",
+        "address_1": "15 Rue de la Paix"
+      },
+      "line_items": [
+        { "name": "Product C", "quantity": 1 }
+      ]
+    },
+    {
+      "id": 5003,
+      "status": "on-hold",
+      "date_created": "2026-01-23T11:15:00",
+      "total": "320.50",
+      "currency": "EUR",
+      "billing": {
+        "email": "lucia.rossi@example.it",
+        "first_name": "Lucia",
+        "last_name": "Rossi"
+      },
+      "shipping": {
+        "city": "Rome",
+        "country": "IT",
+        "address_1": "Via Roma 25"
+      },
+      "line_items": [
+        { "name": "Product D", "quantity": 3 },
+        { "name": "Product E", "quantity": 2 }
+      ]
+    }
+  ]
+}

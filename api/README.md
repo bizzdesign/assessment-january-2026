@@ -1,6 +1,10 @@
 # assessment-january-2026
 
-Frontend & LLM Prompting Assessment
+Frontend & LLM Prompting Assessment - Order Import System
+
+## Overview
+
+This assessment tests the ability to use an LLM to generate mapping configurations that transform order data from various source formats into a standardized order schema.
 
 ## Setup
 
@@ -18,18 +22,45 @@ Run the server:
 npm start
 ```
 
+Open http://localhost:3000 in your browser to access the test interface.
+
+## Standardized Order Schema
+
+All imported orders must be transformed into this schema:
+
+### Required Fields
+| Field | Type | Description |
+|-------|------|-------------|
+| `orderId` | string | Unique order identifier |
+| `customerId` | string | Customer identifier |
+| `customerEmail` | string | Customer email address |
+| `totalAmount` | number | Total amount in cents (integer) |
+| `currency` | string | 3-letter currency code (USD, EUR, GBP) |
+| `status` | enum | pending, confirmed, processing, shipped, delivered, cancelled, refunded |
+
+### Optional Fields
+| Field | Type | Description |
+|-------|------|-------------|
+| `customerName` | string | Customer full name |
+| `itemCount` | number | Number of items in order |
+| `shippingAddress` | string | Full shipping address |
+| `shippingCity` | string | Shipping city |
+| `shippingCountry` | string | Shipping country code |
+| `createdAt` | string | ISO 8601 timestamp |
+| `updatedAt` | string | ISO 8601 timestamp |
+| `notes` | string | Order notes |
+
 ## Endpoints
 
 ### POST /generate/config
 
-Uses an LLM to generate a mapping configuration based on a source file.
+Uses an LLM to generate a mapping configuration for transforming source order data.
 
 **Request:**
 ```json
 {
-  "sourceFile": "user_id,email_address,full_name\n1,alice@example.com,Alice Smith",
-  "fileType": "csv",
-  "targetRepository": "users"
+  "sourceFile": "order_id,customer_email,total...",
+  "fileType": "csv"
 }
 ```
 
@@ -37,124 +68,75 @@ Uses an LLM to generate a mapping configuration based on a source file.
 ```json
 {
   "config": {
-    "name": "user-import",
+    "name": "order-import",
     "sourceType": "csv",
-    "targetRepository": "users",
-    "idField": "user_id",
-    "fieldMappings": [
-      { "sourceField": "email_address", "targetField": "email" },
-      { "sourceField": "full_name", "targetField": "name", "transform": "trim" }
-    ],
-    "options": {
-      "skipEmptyFields": true,
-      "validateRequired": true
-    }
+    "idField": "order_id",
+    "fieldMappings": [...],
+    "options": { "skipEmptyFields": true, "validateRequired": true }
+  },
+  "sourceInfo": {
+    "fields": ["order_id", "customer_email", "total"],
+    "recordCount": 5,
+    "sampleRecords": [...]
   }
 }
 ```
 
 ### POST /execute/config
 
-Executes a mapping configuration against a source file, producing standardized output.
+Executes a mapping configuration to transform source orders into standardized format.
 
 **Request:**
 ```json
 {
-  "config": {
-    "name": "user-import",
-    "sourceType": "csv",
-    "targetRepository": "users",
-    "idField": "user_id",
-    "fieldMappings": [
-      { "sourceField": "email_address", "targetField": "email" },
-      { "sourceField": "full_name", "targetField": "name", "transform": "trim" }
-    ],
-    "options": {
-      "skipEmptyFields": true,
-      "validateRequired": true
-    }
-  },
-  "sourceFile": "user_id,email_address,full_name\n1,alice@example.com,  Alice Smith  \n2,bob@example.com,Bob Jones"
+  "config": { ... },
+  "sourceFile": "order_id,customer_email,total\n1,test@example.com,2999"
 }
 ```
 
-**Response (successful import):**
+**Response:**
 ```json
 {
   "valid": true,
   "summary": {
-    "totalRecords": 2,
-    "successfulImports": 2,
+    "totalRecords": 5,
+    "successfulImports": 5,
     "failedImports": 0,
-    "targetRepository": "users",
     "importedAt": "2026-01-28T12:00:00.000Z"
   },
-  "records": [
+  "orders": [
     {
-      "id": "1",
-      "type": "users",
-      "data": { "email": "alice@example.com", "name": "Alice Smith" },
-      "_meta": { "sourceIndex": 0, "importedAt": "2026-01-28T12:00:00.000Z", "success": true }
-    },
-    {
-      "id": "2",
-      "type": "users",
-      "data": { "email": "bob@example.com", "name": "Bob Jones" },
-      "_meta": { "sourceIndex": 1, "importedAt": "2026-01-28T12:00:00.000Z", "success": true }
+      "_sourceIndex": 0,
+      "_success": true,
+      "order": {
+        "orderId": "1",
+        "customerEmail": "test@example.com",
+        "totalAmount": 2999,
+        ...
+      }
     }
   ]
 }
 ```
 
-**Response (invalid config):**
-```json
-{
-  "valid": false,
-  "errors": [
-    { "path": "fieldMappings", "message": "Missing required target field: \"email\"" }
-  ]
-}
-```
+## Sample Data Files
 
-## Standardized Output Format
+Various order data formats are available in `/sample-data/`:
 
-All imported records are transformed into a consistent structure:
-
-```json
-{
-  "id": "string",           // Unique identifier from source (via idField)
-  "type": "string",         // Target repository (users, products, orders)
-  "data": { ... },          // Mapped field values
-  "_meta": {
-    "sourceIndex": 0,       // Position in source file
-    "importedAt": "...",    // ISO timestamp
-    "success": true,        // Whether import succeeded
-    "errors": []            // Any transformation errors
-  }
-}
-```
-
-## Available Repositories
-
-The following target repositories are available:
-
-- **users**: required `[id, email, name]`, optional `[phone, address, role]`
-- **products**: required `[sku, name, price]`, optional `[description, category, stock]`
-- **orders**: required `[orderId, customerId, total]`, optional `[status, createdAt, items]`
+| File | Format | Description |
+|------|--------|-------------|
+| `ecommerce-orders.csv` | CSV | Simple e-commerce orders |
+| `shopify-export.json` | JSON | Shopify-style nested export |
+| `legacy-system.csv` | CSV | Legacy system with codes (SHP, PND, DLV) |
+| `woocommerce-export.json` | JSON | WooCommerce with wrapper object |
+| `pos-transactions.csv` | CSV | Point-of-sale transactions |
 
 ## Available Transforms
 
-- `none` - no transformation
-- `uppercase` - convert to uppercase
-- `lowercase` - convert to lowercase  
-- `trim` - trim whitespace
-- `number` - convert to number
-
-## Sample Data
-
-Sample source files are available in `/sample-data/`:
-
-- `users.csv` - CSV user data → users repository
-- `products.json` - JSON product data → products repository  
-- `orders.csv` - CSV order data → orders repository
-- `inventory.json` - Nested JSON inventory data → products repository
+| Transform | Description |
+|-----------|-------------|
+| `none` | No transformation |
+| `uppercase` | Convert to uppercase |
+| `lowercase` | Convert to lowercase |
+| `trim` | Trim whitespace |
+| `number` | Convert to number |

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "#1001",
+    "email": "john.doe@gmail.com",
+    "financial_status": "paid",
+    "fulfillment_status": "fulfilled",
+    "total": "89.99",
+    "currency": "USD",
+    "created_at": "2026-01-20T08:30:00-05:00",
+    "customer": { "id": 12345, "first_name": "John", "last_name": "Doe" },
+    "line_items_count": 2,
+    "shipping_address": { "city": "New York", "country": "US", "address1": "123 Main St" }
+  },
+  {
+    "name": "#1002",
+    "email": "jane.smith@yahoo.com",
+    "financial_status": "pending",
+    "fulfillment_status": null,
+    "total": "249.50",
+    "currency": "USD",
+    "created_at": "2026-01-21T15:45:00-05:00",
+    "customer": { "id": 12346, "first_name": "Jane", "last_name": "Smith" },
+    "line_items_count": 4,
+    "shipping_address": { "city": "Los Angeles", "country": "US", "address1": "456 Oak Ave" }
+  },
+  {
+    "name": "#1003",
+    "email": "mike.wilson@outlook.com",
+    "financial_status": "refunded",
+    "fulfillment_status": "fulfilled",
+    "total": "34.99",
+    "currency": "USD",
+    "created_at": "2026-01-19T12:00:00-05:00",
+    "customer": { "id": 12347, "first_name": "Mike", "last_name": "Wilson" },
+    "line_items_count": 1,
+    "shipping_address": { "city": "Chicago", "country": "US", "address1": "789 Pine Rd" }
+  }
+]

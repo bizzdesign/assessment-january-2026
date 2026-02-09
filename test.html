@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Assessment API Tester</title>
+  <title>Order Import - Assessment API Tester</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; }
@@ -21,44 +21,53 @@
     hr { margin: 40px 0; border: none; border-top: 2px solid #ddd; }
     .row { display: flex; gap: 15px; }
     .row > * { flex: 1; }
-    .col { display: flex; flex-direction: column; }
     
     /* Comparison layout */
     .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
-    .comparison-panel { border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fafafa; }
-    .comparison-panel h3 { margin-top: 0; padding-bottom: 8px; border-bottom: 1px solid #ddd; }
+    .comparison-panel { border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fafafa; max-height: 500px; overflow-y: auto; }
+    .comparison-panel h3 { margin-top: 0; padding-bottom: 8px; border-bottom: 1px solid #ddd; position: sticky; top: 0; background: #fafafa; }
     .record-card { background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 10px; margin-bottom: 10px; font-family: monospace; font-size: 11px; }
     .record-card:last-child { margin-bottom: 0; }
-    .record-card .id { font-weight: bold; color: #333; margin-bottom: 5px; }
+    .record-card .id { font-weight: bold; color: #333; margin-bottom: 5px; font-size: 12px; }
     .record-card .field { display: flex; margin: 2px 0; }
-    .record-card .field-name { color: #666; min-width: 120px; }
-    .record-card .field-value { color: #000; }
-    .record-card .arrow { color: #999; margin: 0 8px; }
+    .record-card .field-name { color: #666; min-width: 140px; flex-shrink: 0; }
+    .record-card .field-value { color: #000; word-break: break-all; }
     .record-card.success { border-left: 3px solid #4a4; }
     .record-card.error { border-left: 3px solid #a44; }
     .meta { font-size: 10px; color: #888; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ddd; }
     
-    .summary-bar { background: #333; color: white; padding: 10px 15px; border-radius: 4px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+    .summary-bar { background: #333; color: white; padding: 10px 15px; border-radius: 4px; margin-bottom: 15px; display: flex; justify-content: space-around; }
     .summary-bar .stat { text-align: center; }
     .summary-bar .stat-value { font-size: 20px; font-weight: bold; }
     .summary-bar .stat-label { font-size: 11px; opacity: 0.8; }
+
+    .schema-info { background: #f0f0f0; padding: 10px; border-radius: 4px; font-size: 12px; margin-top: 10px; }
+    .schema-info code { background: #ddd; padding: 2px 4px; border-radius: 2px; }
   </style>
 </head>
 <body>
-  <h1>Assessment API Tester</h1>
+  <h1>Order Import - Assessment API Tester</h1>
+  <p>Transform order data from various source formats into our standardized order schema.</p>
+
+  <div class="schema-info">
+    <strong>Target Order Schema:</strong><br>
+    Required: <code>orderId</code><br>
+    Optional: <code>customerId</code>, <code>customerEmail</code>, <code>customerName</code>, <code>totalAmount</code> (cents), <code>currency</code>, <code>status</code>, <code>itemCount</code>, <code>shippingAddress</code>, <code>shippingCity</code>, <code>shippingCountry</code>, <code>createdAt</code>, <code>updatedAt</code>, <code>notes</code>
+  </div>
 
   <h2>1. Generate Mapping Config</h2>
-  <p>Upload a source file and generate a mapping configuration using the LLM.</p>
+  <p>Select a sample order file and generate a mapping configuration using the LLM.</p>
   
   <div class="row">
     <div>
       <label>Load Sample File:</label>
       <select id="sampleFileSelect" onchange="loadSampleFile()">
-        <option value="">-- Select a sample file --</option>
-        <option value="users.csv">users.csv (CSV → users)</option>
-        <option value="products.json">products.json (JSON → products)</option>
-        <option value="orders.csv">orders.csv (CSV → orders)</option>
-        <option value="inventory.json">inventory.json (JSON → products)</option>
+        <option value="">-- Select a sample order file --</option>
+        <option value="ecommerce-orders.csv">ecommerce-orders.csv (simple CSV)</option>
+        <option value="shopify-export.json">shopify-export.json (nested JSON)</option>
+        <option value="legacy-system.csv">legacy-system.csv (legacy codes)</option>
+        <option value="woocommerce-export.json">woocommerce-export.json (nested with wrapper)</option>
+        <option value="pos-transactions.csv">pos-transactions.csv (POS system)</option>
       </select>
     </div>
     <div>
@@ -68,21 +77,13 @@
         <option value="json">JSON</option>
       </select>
     </div>
-    <div>
-      <label>Target Repository:</label>
-      <select id="generateTargetRepo">
-        <option value="users">users</option>
-        <option value="products">products</option>
-        <option value="orders">orders</option>
-      </select>
-    </div>
   </div>
 
   <label>Source File Content:</label>
-  <textarea id="generateSourceFile" placeholder="Paste your CSV or JSON file content here..."></textarea>
+  <textarea id="generateSourceFile" placeholder="Paste your CSV or JSON order file here..."></textarea>
   
   <button onclick="generateConfig()">Generate Config</button>
-  <button onclick="copyConfigToExecute()">Copy Config to Execute ↓</button>
+  <button onclick="copyConfigToExecute()">Copy to Execute ↓</button>
   
   <div class="row" style="margin-top: 15px;">
     <div>
@@ -98,49 +99,50 @@
   <hr>
 
   <h2>2. Execute Mapping</h2>
-  <p>Execute a mapping configuration against a source file to produce standardized output.</p>
+  <p>Apply the mapping configuration to transform source orders into standardized format.</p>
 
   <div class="row">
     <div>
       <label>Mapping Config (JSON):</label>
-      <textarea id="executeConfig" style="height: 180px;">{
-  "name": "user-import",
+      <textarea id="executeConfig" style="height: 200px;">{
+  "name": "ecommerce-order-import",
   "sourceType": "csv",
-  "targetRepository": "users",
-  "idField": "user_id",
+  "idField": "order_id",
   "fieldMappings": [
-    { "sourceField": "email_address", "targetField": "email" },
-    { "sourceField": "full_name", "targetField": "name", "transform": "trim" },
-    { "sourceField": "phone_number", "targetField": "phone" },
-    { "sourceField": "role", "targetField": "role" }
+    { "sourceField": "customer_id", "targetField": "customerId" },
+    { "sourceField": "customer_email", "targetField": "customerEmail" },
+    { "sourceField": "customer_name", "targetField": "customerName" },
+    { "sourceField": "total_usd", "targetField": "totalAmount", "transform": "number" },
+    { "sourceField": "order_status", "targetField": "status", "transform": "lowercase" },
+    { "sourceField": "item_count", "targetField": "itemCount", "transform": "number" },
+    { "sourceField": "created_date", "targetField": "createdAt" }
   ],
-  "options": { "skipEmptyFields": true, "validateRequired": true }
+  "options": { "skipEmptyFields": true, "validateRequired": false }
 }</textarea>
     </div>
     <div>
       <label>Source File Content:</label>
-      <textarea id="executeSourceFile" style="height: 180px;" placeholder="Paste your CSV or JSON file content here..."></textarea>
+      <textarea id="executeSourceFile" style="height: 200px;" placeholder="Paste your order file here..."></textarea>
     </div>
   </div>
 
-  <button onclick="executeConfig()">Execute Config</button>
+  <button onclick="executeConfig()">Execute Mapping</button>
   <button onclick="toggleRawView()">Toggle Raw JSON</button>
 
   <div id="executeResultContainer">
     <div id="summaryBar" class="summary-bar" style="display: none;">
-      <div class="stat"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total Records</div></div>
+      <div class="stat"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total Orders</div></div>
       <div class="stat"><div class="stat-value" id="statSuccess">0</div><div class="stat-label">Successful</div></div>
       <div class="stat"><div class="stat-value" id="statFailed">0</div><div class="stat-label">Failed</div></div>
-      <div class="stat"><div class="stat-value" id="statRepo">-</div><div class="stat-label">Repository</div></div>
     </div>
     
     <div id="comparisonView" class="comparison" style="display: none;">
       <div class="comparison-panel">
-        <h3>Source Records (Input)</h3>
+        <h3>Source Orders (Input)</h3>
         <div id="inputRecords"></div>
       </div>
       <div class="comparison-panel">
-        <h3>Standardized Records (Output)</h3>
+        <h3>Standardized Orders (Output)</h3>
         <div id="outputRecords"></div>
       </div>
     </div>
@@ -155,61 +157,112 @@
     let showRawView = false;
 
     const SAMPLE_FILES = {
-      'users.csv': `user_id,email_address,full_name,phone_number,role
-1,alice@example.com,Alice Smith,555-1234,admin
-2,bob@example.com,Bob Jones,,user
-3,charlie@example.com,Charlie Brown,555-5678,user
-4,diana@example.com,Diana Prince,555-9999,moderator`,
-      'products.json': `[
-  { "product_code": "SKU001", "product_name": "Widget", "unit_price": "29.99", "desc": "A useful widget", "qty": "100", "cat": "tools" },
-  { "product_code": "SKU002", "product_name": "Gadget", "unit_price": "49.99", "desc": "A cool gadget", "qty": "50", "cat": "electronics" },
-  { "product_code": "SKU003", "product_name": "Thingamajig", "unit_price": "19.99", "desc": "", "qty": "200", "cat": "misc" },
-  { "product_code": "SKU004", "product_name": "Doohickey", "unit_price": "9.99", "desc": "Essential doohickey", "qty": "500", "cat": "tools" }
-]`,
-      'orders.csv': `order_ref,cust_id,amount,state,created
-ORD-001,1,79.98,shipped,2026-01-15
-ORD-002,2,29.99,pending,2026-01-20
-ORD-003,1,149.97,delivered,2026-01-10
-ORD-004,3,59.99,processing,2026-01-25
-ORD-005,4,199.99,shipped,2026-01-22`,
-      'inventory.json': `{
-  "warehouse": "WEST-01",
-  "lastUpdated": "2026-01-28",
-  "items": [
-    { "sku": "SKU001", "name": "Widget", "onHand": 85, "reorderPoint": 20, "unitCost": 15.00 },
-    { "sku": "SKU002", "name": "Gadget", "onHand": 42, "reorderPoint": 10, "unitCost": 25.00 },
-    { "sku": "SKU003", "name": "Thingamajig", "onHand": 180, "reorderPoint": 50, "unitCost": 8.00 },
-    { "sku": "SKU004", "name": "Doohickey", "onHand": 450, "reorderPoint": 100, "unitCost": 4.00 }
+      'ecommerce-orders.csv': {
+        fileType: 'csv',
+        content: `order_id,customer_id,customer_email,customer_name,total_usd,order_status,item_count,created_date
+ORD-10001,CUST-501,alice@example.com,Alice Johnson,149.99,shipped,3,2026-01-15T10:30:00Z
+ORD-10002,CUST-502,bob.smith@email.org,Bob Smith,79.50,pending,1,2026-01-16T14:22:00Z
+ORD-10003,CUST-501,alice@example.com,Alice Johnson,299.00,delivered,5,2026-01-10T09:15:00Z
+ORD-10004,CUST-503,charlie@mail.net,Charlie Brown,45.99,processing,2,2026-01-17T16:45:00Z
+ORD-10005,CUST-504,diana.prince@amazon.com,Diana Prince,599.99,confirmed,1,2026-01-18T11:00:00Z`
+      },
+      'shopify-export.json': {
+        fileType: 'json',
+        content: `[
+  {
+    "name": "#1001",
+    "email": "john.doe@gmail.com",
+    "financial_status": "paid",
+    "fulfillment_status": "fulfilled",
+    "total": "89.99",
+    "currency": "USD",
+    "created_at": "2026-01-20T08:30:00-05:00",
+    "customer": { "id": 12345, "first_name": "John", "last_name": "Doe" },
+    "line_items_count": 2,
+    "shipping_address": { "city": "New York", "country": "US", "address1": "123 Main St" }
+  },
+  {
+    "name": "#1002",
+    "email": "jane.smith@yahoo.com",
+    "financial_status": "pending",
+    "fulfillment_status": null,
+    "total": "249.50",
+    "currency": "USD",
+    "created_at": "2026-01-21T15:45:00-05:00",
+    "customer": { "id": 12346, "first_name": "Jane", "last_name": "Smith" },
+    "line_items_count": 4,
+    "shipping_address": { "city": "Los Angeles", "country": "US", "address1": "456 Oak Ave" }
+  }
+]`
+      },
+      'legacy-system.csv': {
+        fileType: 'csv',
+        content: `ORDER_NUM,CUST_CODE,EMAIL_ADDR,AMOUNT_CENTS,STATUS_CD,SHIP_CITY,SHIP_COUNTRY,ORDER_DT,NOTES
+2026-0001,C100,customer1@legacy.com,15000,SHP,London,GB,20260115,Express shipping requested
+2026-0002,C101,customer2@legacy.com,8999,PND,Manchester,GB,20260116,
+2026-0003,C102,customer3@legacy.com,45000,DLV,Birmingham,GB,20260112,Gift wrap included
+2026-0004,C100,customer1@legacy.com,22500,CNF,London,GB,20260118,Second order this month
+2026-0005,C103,customer4@legacy.com,6750,CNC,Leeds,GB,20260114,Cancelled by customer`
+      },
+      'woocommerce-export.json': {
+        fileType: 'json',
+        content: `{
+  "orders": [
+    {
+      "id": 5001,
+      "status": "processing",
+      "date_created": "2026-01-22T09:00:00",
+      "total": "175.00",
+      "currency": "EUR",
+      "billing": { "email": "hans.mueller@example.de", "first_name": "Hans", "last_name": "Mueller" },
+      "shipping": { "city": "Berlin", "country": "DE", "address_1": "Hauptstrasse 10" },
+      "line_items": [ { "name": "Product A", "quantity": 2 }, { "name": "Product B", "quantity": 1 } ]
+    },
+    {
+      "id": 5002,
+      "status": "completed",
+      "date_created": "2026-01-21T14:30:00",
+      "total": "59.99",
+      "currency": "EUR",
+      "billing": { "email": "marie.dupont@example.fr", "first_name": "Marie", "last_name": "Dupont" },
+      "shipping": { "city": "Paris", "country": "FR", "address_1": "15 Rue de la Paix" },
+      "line_items": [ { "name": "Product C", "quantity": 1 } ]
+    }
   ]
 }`
-    };
-
-    const FILE_MAPPINGS = {
-      'users.csv': { fileType: 'csv', targetRepo: 'users' },
-      'products.json': { fileType: 'json', targetRepo: 'products' },
-      'orders.csv': { fileType: 'csv', targetRepo: 'orders' },
-      'inventory.json': { fileType: 'json', targetRepo: 'products' }
+      },
+      'pos-transactions.csv': {
+        fileType: 'csv',
+        content: `txn_ref,register_id,buyer_email,buyer_phone,sale_total,tax_amount,payment_type,txn_status,txn_time
+POS-20260125-001,REG-03,walk.in@store.com,555-0101,42.99,3.44,card,complete,2026-01-25T10:15:33Z
+POS-20260125-002,REG-01,member@loyalty.com,555-0202,128.50,10.28,card,complete,2026-01-25T11:30:00Z
+POS-20260125-003,REG-02,walk.in@store.com,555-0303,15.99,1.28,cash,complete,2026-01-25T12:45:22Z
+POS-20260125-004,REG-03,vip@customer.org,555-0404,350.00,28.00,card,refunded,2026-01-25T14:00:00Z
+POS-20260125-005,REG-01,member@loyalty.com,555-0505,67.25,5.38,card,complete,2026-01-25T15:20:10Z`
+      }
     };
 
     function loadSampleFile() {
       const select = document.getElementById('sampleFileSelect');
       const fileName = select.value;
       if (fileName && SAMPLE_FILES[fileName]) {
-        document.getElementById('generateSourceFile').value = SAMPLE_FILES[fileName];
-        document.getElementById('executeSourceFile').value = SAMPLE_FILES[fileName];
-        
-        const mapping = FILE_MAPPINGS[fileName];
-        document.getElementById('generateFileType').value = mapping.fileType;
-        document.getElementById('generateTargetRepo').value = mapping.targetRepo;
+        const sample = SAMPLE_FILES[fileName];
+        document.getElementById('generateSourceFile').value = sample.content;
+        document.getElementById('executeSourceFile').value = sample.content;
+        document.getElementById('generateFileType').value = sample.fileType;
       }
     }
 
     function copyConfigToExecute() {
       const result = document.getElementById('generateResult').textContent;
       try {
-        const data = JSON.parse(result);
-        if (data.config && !data.config._placeholder) {
-          document.getElementById('executeConfig').value = JSON.stringify(data.config, null, 2);
+        const config = JSON.parse(result);
+        if (config && config.name && config.fieldMappings && !config._placeholder) {
+          document.getElementById('executeConfig').value = JSON.stringify(config, null, 2);
+          const sourceFile = document.getElementById('generateSourceFile').value;
+          if (sourceFile) {
+            document.getElementById('executeSourceFile').value = sourceFile;
+          }
         } else {
           alert('No valid config to copy. Generate a config first.');
         }
@@ -221,7 +274,6 @@ ORD-005,4,199.99,shipped,2026-01-22`,
     async function generateConfig() {
       const sourceFile = document.getElementById('generateSourceFile').value;
       const fileType = document.getElementById('generateFileType').value;
-      const targetRepository = document.getElementById('generateTargetRepo').value;
       const resultDiv = document.getElementById('generateResult');
       const fieldsDiv = document.getElementById('sourceFieldsResult');
       
@@ -234,15 +286,13 @@ ORD-005,4,199.99,shipped,2026-01-22`,
         const response = await fetch(`${API_BASE}/generate/config`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourceFile, fileType, targetRepository })
+          body: JSON.stringify({ sourceFile, fileType })
         });
         const data = await response.json();
         
-        // Show config
         resultDiv.textContent = JSON.stringify(data.config, null, 2);
         resultDiv.className = response.ok ? 'result success' : 'result error';
         
-        // Show source info
         if (data.sourceInfo) {
           fieldsDiv.innerHTML = `<strong>Fields:</strong> ${data.sourceInfo.fields.join(', ')}\n<strong>Records:</strong> ${data.sourceInfo.recordCount}\n\n<strong>Sample:</strong>\n${JSON.stringify(data.sourceInfo.sampleRecords, null, 2)}`;
           fieldsDiv.className = 'result success';
@@ -277,19 +327,22 @@ ORD-005,4,199.99,shipped,2026-01-22`,
 
     function renderRecordCard(record, isOutput = false) {
       const card = document.createElement('div');
-      card.className = 'record-card' + (isOutput && record._meta ? (record._meta.success ? ' success' : ' error') : '');
       
       if (isOutput) {
-        card.innerHTML = `<div class="id">ID: ${record.id} <span style="color:#888">(${record.type})</span></div>`;
-        for (const [key, value] of Object.entries(record.data || {})) {
-          card.innerHTML += `<div class="field"><span class="field-name">${key}:</span><span class="field-value">${value}</span></div>`;
+        const orderData = record.order || {};
+        card.className = 'record-card' + (record._success ? ' success' : ' error');
+        card.innerHTML = `<div class="id">Order: ${orderData.orderId || 'unknown'}</div>`;
+        for (const [key, value] of Object.entries(orderData)) {
+          if (key === 'orderId') continue;
+          const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
+          card.innerHTML += `<div class="field"><span class="field-name">${key}:</span><span class="field-value">${displayValue}</span></div>`;
         }
-        if (record._meta) {
-          card.innerHTML += `<div class="meta">Index: ${record._meta.sourceIndex} | Success: ${record._meta.success}${record._meta.errors ? ' | Errors: ' + record._meta.errors.join(', ') : ''}</div>`;
-        }
+        card.innerHTML += `<div class="meta">Index: ${record._sourceIndex} | Success: ${record._success}${record._errors ? ' | Errors: ' + record._errors.join(', ') : ''}</div>`;
       } else {
+        card.className = 'record-card';
         for (const [key, value] of Object.entries(record)) {
-          card.innerHTML += `<div class="field"><span class="field-name">${key}:</span><span class="field-value">${value}</span></div>`;
+          const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
+          card.innerHTML += `<div class="field"><span class="field-name">${key}:</span><span class="field-value">${displayValue}</span></div>`;
         }
       }
       
@@ -352,24 +405,19 @@ ORD-005,4,199.99,shipped,2026-01-22`,
           return;
         }
         
-        // Update summary
         document.getElementById('statTotal').textContent = data.summary.totalRecords;
         document.getElementById('statSuccess').textContent = data.summary.successfulImports;
         document.getElementById('statFailed').textContent = data.summary.failedImports;
-        document.getElementById('statRepo').textContent = data.summary.targetRepository;
         
-        // Parse source for comparison
         const sourceRecords = parseSourceData(sourceFile, config.sourceType);
         
-        // Render input records
         inputRecordsDiv.innerHTML = '';
         sourceRecords.forEach(record => {
           inputRecordsDiv.appendChild(renderRecordCard(record, false));
         });
         
-        // Render output records
         outputRecordsDiv.innerHTML = '';
-        data.records.forEach(record => {
+        data.orders.forEach(record => {
           outputRecordsDiv.appendChild(renderRecordCard(record, true));
         });
         

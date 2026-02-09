@@ -1,6 +1,0 @@
-order_ref,cust_id,amount,state,created
-ORD-001,1,79.98,shipped,2026-01-15
-ORD-002,2,29.99,pending,2026-01-20
-ORD-003,1,149.97,delivered,2026-01-10
-ORD-004,3,59.99,processing,2026-01-25
-ORD-005,4,199.99,shipped,2026-01-22

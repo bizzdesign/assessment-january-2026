@@ -1,26 +1,4 @@
-# assessment-january-2026
-
-Frontend & LLM Prompting Assessment - Order Import System
-
-## Overview
-
-This assessment tests the ability to use an LLM to generate mapping configurations that transform order data from various source formats into a standardized order schema.
-
-## Setup
-
-```bash
-npm install
-```
-
-Set your OpenRouter API key (get one at https://openrouter.ai/keys):
-```bash
-export OPENROUTER_API_KEY=your-key-here
-```
-
-Run the server:
-```bash
-npm start
-```
+# API Reference
 
 ## Standardized Order Schema
 
@@ -30,16 +8,16 @@ All imported orders must be transformed into this schema:
 | Field | Type | Description |
 |-------|------|-------------|
 | `orderId` | string | Unique order identifier |
-| `customerId` | string | Customer identifier |
-| `customerEmail` | string | Customer email address |
-| `totalAmount` | number | Total amount in cents (integer) |
-| `currency` | string | 3-letter currency code (USD, EUR, GBP) |
-| `status` | enum | pending, confirmed, processing, shipped, delivered, cancelled, refunded |
 
 ### Optional Fields
 | Field | Type | Description |
 |-------|------|-------------|
+| `customerId` | string | Customer identifier |
+| `customerEmail` | string | Customer email address |
 | `customerName` | string | Customer full name |
+| `totalAmount` | number | Total amount in cents (integer) |
+| `currency` | string | 3-letter currency code (USD, EUR, GBP) |
+| `status` | string | Order status (e.g. pending, confirmed, processing, shipped, delivered, cancelled, refunded) |
 | `itemCount` | number | Number of items in order |
 | `shippingAddress` | string | Full shipping address |
 | `shippingCity` | string | Shipping city |

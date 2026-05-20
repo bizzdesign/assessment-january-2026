@@ -91,15 +91,27 @@ const ExecuteConfigResponseSchema = z.object({
  *     - recordCount: number - Total number of records
  *     - sampleRecords: object[] - First 3 records as sample
  */
+function extractFields(sourceFile, fileType) {
+  if (fileType === 'json') {
+    const data = JSON.parse(sourceFile);
+    const records = Array.isArray(data) ? data : (Object.values(data).find(v => Array.isArray(v)) ?? [data]);
+    return records.length > 0 ? Object.keys(records[0]) : [];
+  }
+  const firstLine = sourceFile.trim().split('\n')[0];
+  return firstLine.split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+}
+
 app.post('/generate/config', async (req, res) => {
   const { sourceFile, fileType } = req.body;
   if (!sourceFile || !fileType) {
     return res.status(400).json({ error: 'sourceFile and fileType are required' });
   }
   try {
+    const fields = extractFields(sourceFile, fileType);
     const result = await callLLM({
       schema: MappingConfigSchema,
-      prompt: `You are a data mapping expert. Given this ${fileType} order data, generate a mapping configuration that maps its fields to the standardized order schema.\n\n${sourceFile}`,
+      prompt: `You are a data mapping expert. Given these ${fileType} source fields, generate a mapping configuration that maps them to the standardized order schema.\n\nSource fields: ${fields.join(', ')}`,
+      fields,
     });
     res.json(result);
   } catch (err) {

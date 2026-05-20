@@ -24,8 +24,25 @@ export const MappingConfigSchema = z.object({
   }),
 });
 
-export async function callLLM({ schema, prompt }) {
+const mappingCache = [];
+
+function getCachedMapping(fields) {
+  const key = [...fields].sort().join(',');
+  return mappingCache.find(entry => entry.key === key)?.config ?? null;
+}
+
+function cacheMapping(fields, config) {
+  const key = [...fields].sort().join(',');
+  mappingCache.push({ key, config });
+}
+
+export async function callLLM({ schema, prompt, fields }) {
+  if (fields) {
+    const cached = getCachedMapping(fields);
+    if (cached) return cached;
+  }
   const { object } = await generateObject({ model, schema, prompt });
+  if (fields) cacheMapping(fields, object);
   return object;
 }
 

@@ -1,29 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { z } from 'zod';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-
-// ============================================================================
-// OPENROUTER CONFIGURATION
-// ============================================================================
-// Set your API key: export OPENROUTER_API_KEY=your-key-here
-// Get a key at: https://openrouter.ai/keys
-
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
-
-// Available models (pick one to use with openrouter('model-id')):
-// See full list at: https://openrouter.ai/models
-//
-// RECOMMENDED MODELS:
-//   anthropic/claude-sonnet-4-6 - Excellent reasoning and instruction following
-//   anthropic/claude-haiku-4-5  - Fast and cheap, good for simple tasks
-//   openai/gpt-4o               - Strong overall, fast, great at structured output
-//   openai/gpt-4o-mini          - Cheaper, still very capable
-//   google/gemini-2.5-flash     - Very fast, good value
-//   google/gemini-2.5-pro       - Strong reasoning, large context
-//   deepseek/deepseek-chat-v3   - Very cheap, surprisingly capable
+import { callLLM, MappingConfigSchema, executeConfig } from './service.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -93,27 +71,6 @@ const ExecuteConfigResponseSchema = z.object({
 });
 
 // ============================================================================
-// SCHEMA DEFINITIONS
-// ============================================================================
-
-// Schema for the mapping config that the LLM should generate
-const MappingConfigSchema = z.object({
-  name: z.string().describe('Name of this import mapping'),
-  sourceType: z.enum(['csv', 'json']).describe('Type of the source data'),
-  idField: z.string().describe('The source field to use as the order ID'),
-  fieldMappings: z.array(z.object({
-    sourceField: z.string().describe('Field name in the source data'),
-    targetField: z.string().describe('Field name in the standardized order schema'),
-    transform: z.enum(['none', 'uppercase', 'lowercase', 'trim', 'number']).optional()
-      .describe('Optional transformation to apply'),
-  })).describe('Array of field mappings from source to target order fields'),
-  options: z.object({
-    skipEmptyFields: z.boolean().describe('Whether to skip empty source fields'),
-    validateRequired: z.boolean().describe('Whether to validate required target fields'),
-  }),
-});
-
-// ============================================================================
 // ENDPOINTS
 // ============================================================================
 
@@ -134,8 +91,32 @@ const MappingConfigSchema = z.object({
  *     - recordCount: number - Total number of records
  *     - sampleRecords: object[] - First 3 records as sample
  */
+function extractFields(sourceFile, fileType) {
+  if (fileType === 'json') {
+    const data = JSON.parse(sourceFile);
+    const records = Array.isArray(data) ? data : (Object.values(data).find(v => Array.isArray(v)) ?? [data]);
+    return records.length > 0 ? Object.keys(records[0]) : [];
+  }
+  const firstLine = sourceFile.trim().split('\n')[0];
+  return firstLine.split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+}
+
 app.post('/generate/config', async (req, res) => {
-  // TODO: Implement
+  const { sourceFile, fileType } = req.body;
+  if (!sourceFile || !fileType) {
+    return res.status(400).json({ error: 'sourceFile and fileType are required' });
+  }
+  try {
+    const fields = extractFields(sourceFile, fileType);
+    const result = await callLLM({
+      schema: MappingConfigSchema,
+      prompt: `You are a data mapping expert. Given these ${fileType} source fields, generate a mapping configuration that maps them to the standardized order schema.\n\nSource fields: ${fields.join(', ')}`,
+      fields,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
@@ -155,7 +136,25 @@ app.post('/generate/config', async (req, res) => {
  *   - errors: array of { path, message } (if config is invalid)
  */
 app.post('/execute/config', async (req, res) => {
-  // TODO: Implement
+  const { config, sourceFile } = req.body;
+  if (!config || !sourceFile) {
+    return res.status(400).json({ error: 'config and sourceFile are required' });
+  }
+
+  const parsed = MappingConfigSchema.safeParse(config);
+  if (!parsed.success) {
+    return res.json({
+      valid: false,
+      errors: parsed.error.errors.map(e => ({ path: e.path.join('.'), message: e.message })),
+    });
+  }
+
+  try {
+    const result = executeConfig(parsed.data, sourceFile);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

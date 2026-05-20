@@ -28,3 +28,53 @@ export async function callLLM({ schema, prompt }) {
   const { object } = await generateObject({ model, schema, prompt });
   return object;
 }
+
+function parseSource(sourceFile, sourceType) {
+  if (sourceType === 'json') {
+    const data = JSON.parse(sourceFile);
+    return Array.isArray(data) ? data : (Object.values(data).find(v => Array.isArray(v)) ?? [data]);
+  }
+  const lines = sourceFile.trim().split('\n').filter(Boolean);
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    return Object.fromEntries(headers.map((h, i) => [h, values[i] ?? '']));
+  });
+}
+
+export function executeConfig(config, sourceFile) {
+  const records = parseSource(sourceFile, config.sourceType);
+
+  const orders = records.map((record, index) => {
+    const order = {};
+    for (const mapping of config.fieldMappings) {
+      const value = record[mapping.sourceField];
+      if (value !== undefined && value !== '') {
+        order[mapping.targetField] = value;
+      }
+    }
+    if (!order.orderId && record[config.idField] !== undefined) {
+      order.orderId = String(record[config.idField]);
+    }
+    const success = !!order.orderId;
+    return {
+      _sourceIndex: index,
+      _success: success,
+      ...(!success && { _errors: ['Missing required field: orderId'] }),
+      order,
+    };
+  });
+
+  const successfulImports = orders.filter(o => o._success).length;
+
+  return {
+    valid: true,
+    summary: {
+      totalRecords: records.length,
+      successfulImports,
+      failedImports: records.length - successfulImports,
+      importedAt: new Date().toISOString(),
+    },
+    orders,
+  };
+}

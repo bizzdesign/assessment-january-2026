@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { z } from 'zod';
-import { callLLM, MappingConfigSchema } from './service.js';
+import { callLLM, MappingConfigSchema, executeConfig } from './service.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
